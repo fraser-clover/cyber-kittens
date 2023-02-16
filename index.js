@@ -1,6 +1,9 @@
 const express = require('express');
 const app = express();
-const { User } = require('./db');
+const { User, Kitten } = require('./db');
+require('dotenv').config();
+const { JWT_SECRET } = process.env;
+const jwt = require('jsonwebtoken');
 
 app.use(express.json());
 app.use(express.urlencoded({extended:true}));
@@ -21,6 +24,17 @@ app.get('/', async (req, res, next) => {
 
 // Verifies token with jwt.verify and sets req.user
 // TODO - Create authentication middleware
+const setUser = async (req, res, next) => {
+  const auth = req.header("Authorization");
+  if (!auth) {
+    next();
+  } else {
+    const [, token] = auth.split(' ');
+    const user = jwt.verify(token, JWT_SECRET);
+    req.user = user;
+    next();
+  }
+}
 
 // POST /register
 // OPTIONAL - takes req.body of {username, password} and creates a new user with the hashed password
@@ -30,12 +44,45 @@ app.get('/', async (req, res, next) => {
 
 // GET /kittens/:id
 // TODO - takes an id and returns the cat with that id
+app.get('/kittens/:id',setUser , async (req, res, next) => {
+  const singleKitten = await Kitten.findByPk(req.params.id);
+  if (!req.user) {
+  res.sendStatus(401);
+  } else {
+    if (req.user.id !== singleKitten.ownerId) {
+    res.sendStatus(401);
+    } else {
+    res.send({name: singleKitten.name, color: singleKitten.color, age: singleKitten.age});
+    }
+  }
+})
 
 // POST /kittens
 // TODO - takes req.body of {name, age, color} and creates a new cat with the given name, age, and color
+app.post('/kittens',setUser , async (req, res , next) => {
+  if (!req.user) {
+    res.sendStatus(401);
+  } else {
+    const {name, color, age} = req.body;
+    const kitten = await Kitten.create({name ,color, age, ownerId: req.user.id});
+    res.status(201).send({name: kitten.name, color: kitten.color, age: kitten.age});
+  }
+})
 
 // DELETE /kittens/:id
 // TODO - takes an id and deletes the cat with that id
+app.delete('/kittens/:id',setUser , async (req, res, next) => {
+  const singleKitten = await Kitten.findByPk(req.params.id);
+  if(!req.user){
+    res.sendStatus(401);
+  } else {
+  if (req.user.id !== singleKitten.ownerId) {
+    res.sendStatus(401)
+  } else {
+    await singleKitten.destroy();
+    res.sendStatus(204)
+  }}
+})
 
 // error handling middleware, so failed tests receive them
 app.use((error, req, res, next) => {
