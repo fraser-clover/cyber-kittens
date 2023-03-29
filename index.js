@@ -6,7 +6,9 @@ const { JWT_SECRET } = process.env;
 const jwt = require('jsonwebtoken');
 
 app.use(express.json());
-app.use(express.urlencoded({extended:true}));
+app.use(express.urlencoded({ extended: true }));
+
+const SALT_COUNT = 10;
 
 app.get('/', async (req, res, next) => {
   try {
@@ -68,6 +70,46 @@ app.post('/kittens',setUser , async (req, res , next) => {
     res.status(201).send({name: kitten.name, color: kitten.color, age: kitten.age});
   }
 })
+
+app.post('/register', setUser, async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    const hash = await bcrypt.hash(password, SALT_COUNT);
+    const user = await User.create({
+      username,
+      password: hash,
+    });
+    const token = jwt.sign((user.id, user.username), process.env.JWT_SECRET);
+    res.send({ message: "User registered", token, hash });
+  } catch (err) { 
+     console.log(err);
+    next(err);
+  }
+})
+
+app.post("/login", async (req, res, next) => {
+  try {
+    const { username, password, ownerId } = req.body;
+
+    const user = await User.findOne({ where: { username: username } });
+
+    if (user === null) {
+      res.send("User not found");
+    } else {
+      const comparePasswords = await bcrypt.compare(password, user.password);
+      if (comparePasswords) {
+        res.send("success");
+      } else {
+        res.send(
+           user
+        );
+      }
+    }
+  } catch (err) {
+    console.log(err);
+    next(err);
+  }
+});
 
 // DELETE /kittens/:id
 // TODO - takes an id and deletes the cat with that id
